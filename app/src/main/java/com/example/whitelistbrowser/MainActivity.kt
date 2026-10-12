@@ -45,7 +45,7 @@ class MainActivity : AppCompatActivity() {
             allowFileAccessFromFileURLs = false
             allowUniversalAccessFromFileURLs = false
             javaScriptCanOpenWindowsAutomatically = false
-            supportMultipleWindows = false
+            setSupportMultipleWindows(false)
         }
 
         binding.webView.webViewClient = RestrictedWebViewClient()
