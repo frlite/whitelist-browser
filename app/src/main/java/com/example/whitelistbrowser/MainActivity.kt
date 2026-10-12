@@ -41,9 +41,9 @@ class MainActivity : AppCompatActivity() {
             domStorageEnabled = true
             allowFileAccess = true
             allowContentAccess = true
-            // 禁止 file:// 页面通过 XHR/脚本访问其他本地文件
-            allowFileAccessFromFileURLs = false
-            allowUniversalAccessFromFileURLs = false
+            // 允许 file:// 页面执行 JS 和访问本地资源（游戏等本地 HTML 需要）
+            allowFileAccessFromFileURLs = true
+            allowUniversalAccessFromFileURLs = true
             javaScriptCanOpenWindowsAutomatically = false
             setSupportMultipleWindows(false)
         }
