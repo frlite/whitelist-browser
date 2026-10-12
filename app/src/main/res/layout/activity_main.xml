@@ -89,6 +89,14 @@
             android:text="@string/btn_open_file" />
 
         <Button
+            android:id="@+id/btnScan"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/btn_scan" />
+
+        <Button
             android:id="@+id/btnWhitelist"
             style="@style/Widget.Material3.Button.OutlinedButton"
             android:layout_width="0dp"

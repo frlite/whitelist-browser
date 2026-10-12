@@ -9,7 +9,9 @@
     <string name="btn_refresh">刷新</string>
     <string name="btn_home">首页</string>
     <string name="btn_open_file">打开本地文件</string>
+    <string name="btn_scan">扫码打开</string>
     <string name="btn_whitelist">白名单</string>
+    <string name="scan_hint">扫描二维码打开网站</string>
     <string name="btn_add">添加</string>
     <string name="btn_delete">删除</string>
     <string name="whitelist_title">白名单管理</string>

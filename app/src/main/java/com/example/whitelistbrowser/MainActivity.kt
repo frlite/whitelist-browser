@@ -1,6 +1,8 @@
 package com.example.whitelistbrowser
 
+import android.Manifest
 import android.annotation.SuppressLint
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Bundle
@@ -12,7 +14,10 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import com.example.whitelistbrowser.databinding.ActivityMainBinding
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 
 class MainActivity : AppCompatActivity() {
 
@@ -26,6 +31,24 @@ class MainActivity : AppCompatActivity() {
         ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
         if (uri != null) openLocalFile(uri)
+    }
+
+    private val requestPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            startScan()
+        } else {
+            Toast.makeText(this, "需要相机权限才能扫码", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private val scanLauncher = registerForActivityResult(
+        ScanContract()
+    ) { result ->
+        if (result.contents != null) {
+            handleScanResult(result.contents)
+        }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -65,6 +88,15 @@ class MainActivity : AppCompatActivity() {
         binding.btnRefresh.setOnClickListener { binding.webView.reload() }
         binding.btnOpenFile.setOnClickListener {
             openFileLauncher.launch(arrayOf("text/html", "text/plain", "application/xhtml+xml"))
+        }
+        binding.btnScan.setOnClickListener {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+                == PackageManager.PERMISSION_GRANTED
+            ) {
+                startScan()
+            } else {
+                requestPermissionLauncher.launch(Manifest.permission.CAMERA)
+            }
         }
         binding.btnWhitelist.setOnClickListener {
             startActivity(android.content.Intent(this, WhitelistActivity::class.java))
@@ -154,6 +186,31 @@ class MainActivity : AppCompatActivity() {
             binding.webView.loadUrl(Uri.fromFile(file).toString())
         } else {
             Toast.makeText(this, R.string.toast_open_failed, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun startScan() {
+        val options = ScanOptions().apply {
+            setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+            setPrompt("将二维码放入框内扫描")
+            setBeepEnabled(false)
+            setOrientationLocked(false)
+            setCameraId(0)
+        }
+        scanLauncher.launch(options)
+    }
+
+    private fun handleScanResult(contents: String) {
+        val uri = Uri.parse(contents)
+        when (uri.scheme?.lowercase()) {
+            "http", "https" -> {
+                if (isAllowed(contents)) {
+                    binding.webView.loadUrl(contents)
+                } else {
+                    showWhitelistDialog(contents)
+                }
+            }
+            else -> Toast.makeText(this, "不支持的链接类型", Toast.LENGTH_SHORT).show()
         }
     }
 
