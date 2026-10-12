@@ -22,10 +22,13 @@ import com.journeyapps.barcodescanner.ScanOptions
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
-    private lateinit var whitelist: WhitelistStore
+    private lateinit var syncManager: WhitelistSyncManager
 
     /** 记录最近一次在 onPageStarted 中被拦截的 URL，防止重定向循环 */
     private var lastInterceptedUrl: String? = null
+
+    /** 当前正在等待审批请求的域名 */
+    private var pendingApprovalDomain: String? = null
 
     private val openFileLauncher = registerForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -57,14 +60,20 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        whitelist = WhitelistStore(this)
+        syncManager = WhitelistSyncManager(this)
+
+        // 如果未配置服务器，显示配置对话框
+        if (!syncManager.isServerConfigured()) {
+            showServerConfigDialog()
+        } else {
+            syncManager.fetchWhitelist()
+        }
 
         with(binding.webView.settings) {
             javaScriptEnabled = true
             domStorageEnabled = true
             allowFileAccess = true
             allowContentAccess = true
-            // 允许 file:// 页面执行 JS 和访问本地资源（游戏等本地 HTML 需要）
             allowFileAccessFromFileURLs = true
             allowUniversalAccessFromFileURLs = true
             javaScriptCanOpenWindowsAutomatically = false
@@ -109,6 +118,24 @@ class MainActivity : AppCompatActivity() {
         binding.webView.loadUrl("file:///android_asset/home.html")
     }
 
+    private fun showServerConfigDialog() {
+        val editText = android.widget.EditText(this).apply {
+            hint = "http://192.168.1.100:5000"
+            setText("http://")
+        }
+        AlertDialog.Builder(this)
+            .setTitle("配置白名单服务器")
+            .setMessage("请输入白名单服务器地址")
+            .setView(editText)
+            .setPositiveButton("保存") { _, _ ->
+                syncManager.setServerUrl(editText.text.toString().trim())
+                syncManager.fetchWhitelist()
+                Toast.makeText(this, "已连接到服务器", Toast.LENGTH_SHORT).show()
+            }
+            .setCancelable(false)
+            .show()
+    }
+
     private fun navigateToAddress() {
         val input = binding.etUrl.text.toString().trim()
         if (input.isEmpty()) return
@@ -122,7 +149,7 @@ class MainActivity : AppCompatActivity() {
                 if (isAllowed(url)) {
                     binding.webView.loadUrl(url)
                 } else {
-                    showWhitelistDialog(url)
+                    requestDomainAccess(url)
                 }
             }
             "file" -> {
@@ -152,7 +179,7 @@ class MainActivity : AppCompatActivity() {
         return when (uri.scheme?.lowercase()) {
             "http", "https" -> {
                 val host = uri.host ?: return false
-                whitelist.contains(host)
+                syncManager.getCachedWhitelist().any { it == host || host.endsWith(".$it") }
             }
             "file" -> isLocalFileAllowed(uri)
             "about" -> true
@@ -167,17 +194,50 @@ class MainActivity : AppCompatActivity() {
             path.startsWith("${filesDir.absolutePath}/local/")
     }
 
-    private fun showWhitelistDialog(url: String) {
-        val host = Uri.parse(url).host ?: url
+    /** 向服务端请求访问某个域名 */
+    private fun requestDomainAccess(url: String) {
+        val host = Uri.parse(url).host ?: return
+
+        if (pendingApprovalDomain != null) {
+            Toast.makeText(this, "已有请求正在等待审批", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        pendingApprovalDomain = host
+        syncManager.requestAccess(host)
+
         AlertDialog.Builder(this)
-            .setTitle(R.string.dialog_blocked_title)
-            .setMessage(getString(R.string.dialog_blocked_message, host))
-            .setPositiveButton(R.string.dialog_add_whitelist) { _, _ ->
-                whitelist.add(host)
-                binding.webView.loadUrl(url)
-            }
-            .setNegativeButton(R.string.dialog_cancel, null)
+            .setTitle("等待审批")
+            .setMessage("已向服务器申请访问权限：$host\n请等待管理员审批...")
+            .setNegativeButton("取消") { _, _ -> pendingApprovalDomain = null }
+            .setCancelable(false)
             .show()
+
+        syncManager.onRequestResolved = { domain, approved ->
+            if (domain == pendingApprovalDomain) {
+                pendingApprovalDomain = null
+                if (approved) {
+                    Toast.makeText(this, "审批通过，正在打开...", Toast.LENGTH_SHORT).show()
+                    binding.webView.loadUrl(url)
+                } else {
+                    Toast.makeText(this, "访问请求被拒绝", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    private fun handleScanResult(contents: String) {
+        val uri = Uri.parse(contents)
+        when (uri.scheme?.lowercase()) {
+            "http", "https" -> {
+                if (isAllowed(contents)) {
+                    binding.webView.loadUrl(contents)
+                } else {
+                    requestDomainAccess(contents)
+                }
+            }
+            else -> Toast.makeText(this, "不支持的链接类型", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun openLocalFile(uri: Uri) {
@@ -200,20 +260,6 @@ class MainActivity : AppCompatActivity() {
         scanLauncher.launch(options)
     }
 
-    private fun handleScanResult(contents: String) {
-        val uri = Uri.parse(contents)
-        when (uri.scheme?.lowercase()) {
-            "http", "https" -> {
-                if (isAllowed(contents)) {
-                    binding.webView.loadUrl(contents)
-                } else {
-                    showWhitelistDialog(contents)
-                }
-            }
-            else -> Toast.makeText(this, "不支持的链接类型", Toast.LENGTH_SHORT).show()
-        }
-    }
-
     private inner class RestrictedWebViewClient : WebViewClient() {
 
         override fun shouldOverrideUrlLoading(
@@ -222,16 +268,8 @@ class MainActivity : AppCompatActivity() {
         ): Boolean {
             val url = request.url.toString()
             if (isAllowed(url)) return false
-            // 主框架导航被拦截：只提示，不跳转（页面仍停留在当前页）
             if (request.isForMainFrame) {
-                val host = Uri.parse(url).host
-                if (host != null && !whitelist.contains(host)) {
-                    Toast.makeText(this@MainActivity,
-                        getString(R.string.toast_blocked, host), Toast.LENGTH_SHORT).show()
-                } else {
-                    Toast.makeText(this@MainActivity,
-                        R.string.toast_scheme_blocked, Toast.LENGTH_SHORT).show()
-                }
+                requestDomainAccess(url)
             }
             return true
         }
@@ -239,14 +277,7 @@ class MainActivity : AppCompatActivity() {
         @Deprecated("Deprecated in Java")
         override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean {
             if (isAllowed(url)) return false
-            val host = Uri.parse(url).host
-            if (host != null && !whitelist.contains(host)) {
-                Toast.makeText(this@MainActivity,
-                    getString(R.string.toast_blocked, host), Toast.LENGTH_SHORT).show()
-            } else {
-                Toast.makeText(this@MainActivity,
-                    R.string.toast_scheme_blocked, Toast.LENGTH_SHORT).show()
-            }
+            requestDomainAccess(url)
             return true
         }
 
@@ -263,10 +294,8 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** onPageStarted 阶段拦截（兜底，主要应对服务器重定向） */
     private fun handlePageStartBlocked(view: WebView, url: String) {
         if (url == lastInterceptedUrl) {
-            // 防止循环拦截：直接回首页
             lastInterceptedUrl = null
             loadHome()
             return

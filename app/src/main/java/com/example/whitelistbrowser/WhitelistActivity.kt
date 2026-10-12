@@ -6,10 +6,13 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.whitelistbrowser.databinding.ActivityWhitelistBinding
 
+/**
+ * 白名单管理页面：查看服务端下发的白名单列表（只读），添加需通过服务端管理端。
+ */
 class WhitelistActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityWhitelistBinding
-    private lateinit var store: WhitelistStore
+    private lateinit var syncManager: WhitelistSyncManager
     private lateinit var adapter: DomainAdapter
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -17,39 +20,21 @@ class WhitelistActivity : AppCompatActivity() {
         binding = ActivityWhitelistBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        store = WhitelistStore(this)
+        syncManager = WhitelistSyncManager(this)
 
-        adapter = DomainAdapter(
-            onDelete = { domain ->
-                store.remove(domain)
-                refresh()
-                Toast.makeText(this, getString(R.string.toast_removed, domain), Toast.LENGTH_SHORT).show()
-            }
-        )
+        adapter = DomainAdapter(onDelete = { /* 服务端模式下不允许本地删除 */ })
         binding.rvDomains.layoutManager = LinearLayoutManager(this)
         binding.rvDomains.adapter = adapter
 
         binding.btnAdd.setOnClickListener {
-            val input = binding.etDomain.text.toString().trim()
-            if (input.isEmpty()) return@setOnClickListener
-            val normalized = WhitelistStore.normalize(input)
-            if (normalized.isEmpty()) {
-                Toast.makeText(this, R.string.toast_invalid_domain, Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-            if (store.add(normalized)) {
-                binding.etDomain.text?.clear()
-                refresh()
-                Toast.makeText(this, getString(R.string.toast_added, normalized), Toast.LENGTH_SHORT).show()
-            } else {
-                Toast.makeText(this, R.string.toast_already_exists, Toast.LENGTH_SHORT).show()
-            }
+            Toast.makeText(this, "请通过管理端添加白名单", Toast.LENGTH_SHORT).show()
         }
 
         refresh()
     }
 
     private fun refresh() {
-        adapter.submit(store.getAll().sorted())
+        val domains = syncManager.getCachedWhitelist()
+        adapter.submit(domains.sorted())
     }
 }

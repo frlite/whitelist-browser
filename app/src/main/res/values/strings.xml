@@ -11,11 +11,10 @@
     <string name="btn_open_file">打开本地文件</string>
     <string name="btn_scan">扫码打开</string>
     <string name="btn_whitelist">白名单</string>
-    <string name="scan_hint">扫描二维码打开网站</string>
     <string name="btn_add">添加</string>
     <string name="btn_delete">删除</string>
     <string name="whitelist_title">白名单管理</string>
-    <string name="whitelist_description">只有白名单中的域名及其子域名可以访问。默认只能打开本地 HTML 文件。</string>
+    <string name="whitelist_description">白名单由服务端统一管理，客户端只读。请通过管理端添加或修改。</string>
     <string name="dialog_blocked_title">网站已被限制</string>
     <string name="dialog_blocked_message">域名 %1$s 不在白名单中，是否添加到白名单并访问？</string>
     <string name="dialog_add_whitelist">添加并访问</string>
@@ -28,4 +27,5 @@
     <string name="toast_added">已添加：%1$s</string>
     <string name="toast_removed">已删除：%1$s</string>
     <string name="toast_already_exists">该域名已在白名单中</string>
+    <string name="scan_hint">扫描二维码打开网站</string>
 </resources>
